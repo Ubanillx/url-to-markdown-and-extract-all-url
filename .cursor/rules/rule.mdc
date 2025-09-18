@@ -1,0 +1,7 @@
+---
+alwaysApply: true
+---
+
+项目启动端口是9998，同时使用conda 作为环境管理，启动使用./start.sh脚本
+conda activate url-to-markdown
+
