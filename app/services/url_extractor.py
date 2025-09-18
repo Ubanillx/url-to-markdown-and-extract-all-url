@@ -20,6 +20,9 @@ class UrlExtractorService:
         self.h2t.ignore_links = False
         self.h2t.ignore_images = False
         self.h2t.body_width = 0  # 不限制行宽
+        self.h2t.unicode_snob = True  # 使用Unicode字符
+        self.h2t.escape_snob = True  # 转义特殊字符
+        self.h2t.mark_code = True  # 标记代码块
         
     def extract_urls_and_markdown(self, request: UrlExtractRequest) -> UrlExtractResponse:
         """提取URL并转换为Markdown"""
