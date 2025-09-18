@@ -1,0 +1,42 @@
+[Unit]
+Description=URL to Markdown and Extract URL Service
+Documentation=https://github.com/your-repo/URL_to_markdown_and_extract_url
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/Users/ubanillx/Code/URL_to_markdown_and_extract_url
+Environment=PATH=/opt/miniconda3/bin:/opt/anaconda3/bin:/usr/local/miniconda3/bin:/usr/local/anaconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=CONDA_DEFAULT_ENV=url-to-markdown
+Environment=CONDA_PREFIX=/opt/miniconda3/envs/url-to-markdown
+ExecStartPre=/bin/bash -c 'source /opt/miniconda3/etc/profile.d/conda.sh && conda activate url-to-markdown'
+ExecStart=/bin/bash -c 'source /opt/miniconda3/etc/profile.d/conda.sh && conda activate url-to-markdown && python -m uvicorn app.main:app --host 0.0.0.0 --port 9998 --workers 1'
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=url-to-markdown
+
+# 安全设置
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/url-to-markdown /var/run
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target
