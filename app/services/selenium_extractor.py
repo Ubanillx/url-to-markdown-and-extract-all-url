@@ -5,6 +5,7 @@
 
 import time
 import logging
+import socket
 from typing import List, Dict, Any, Optional
 from urllib.parse import urljoin, urlparse
 from selenium import webdriver
@@ -16,22 +17,33 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
-import html2text
 
 from app.schemas.url_extract import UrlExtractRequest, UrlExtractResponse
+from app.services.text_extractor import TextExtractorService
 
 logger = logging.getLogger(__name__)
 
 
 class SeleniumExtractorService:
-    """基于Selenium的网页内容提取服务"""
+    """基于Selenium的URL提取服务"""
     
     def __init__(self):
         self.driver: Optional[webdriver.Chrome] = None
-        self.h2t = html2text.HTML2Text()
-        self.h2t.ignore_links = False
-        self.h2t.ignore_images = False
-        self.h2t.body_width = 0  # 不限制行宽
+        self.text_extractor = TextExtractorService()
+    
+    def _check_network_connectivity(self) -> bool:
+        """检查网络连接状态"""
+        try:
+            # 尝试连接到一个可靠的DNS服务器
+            socket.create_connection(("8.8.8.8", 53), timeout=5)
+            return True
+        except OSError:
+            try:
+                # 备用DNS服务器
+                socket.create_connection(("1.1.1.1", 53), timeout=5)
+                return True
+            except OSError:
+                return False
     
     def _setup_driver(self) -> webdriver.Chrome:
         """设置Chrome WebDriver"""
@@ -53,15 +65,27 @@ class SeleniumExtractorService:
         chrome_options.add_argument('--page-load-strategy=normal')
         
         try:
-            # 自动下载和管理ChromeDriver
+            # 尝试自动下载和管理ChromeDriver
+            logger.info("Setting up Chrome driver...")
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.set_page_load_timeout(30)
             driver.implicitly_wait(10)
+            logger.info("Chrome driver setup successful")
             return driver
         except Exception as e:
             logger.error(f"Failed to setup Chrome driver: {e}")
-            raise
+            # 尝试使用系统PATH中的chromedriver作为备用方案
+            try:
+                logger.info("Trying fallback: using system chromedriver...")
+                driver = webdriver.Chrome(options=chrome_options)
+                driver.set_page_load_timeout(30)
+                driver.implicitly_wait(10)
+                logger.info("Fallback Chrome driver setup successful")
+                return driver
+            except Exception as fallback_error:
+                logger.error(f"Fallback Chrome driver also failed: {fallback_error}")
+                raise Exception(f"无法设置Chrome WebDriver。请确保：1) 网络连接正常 2) 已安装Chrome浏览器 3) 系统PATH中有chromedriver。原始错误: {e}")
     
     def _wait_for_page_load(self, timeout: int = 15) -> bool:
         """等待页面完全加载，包括动态内容"""
@@ -161,152 +185,23 @@ class SeleniumExtractorService:
         
         return True
     
-    def _extract_text_content(self) -> str:
-        """提取页面的纯文本内容，包括动态渲染的内容和iframe内容"""
-        try:
-            # 等待内容加载
-            time.sleep(2)
-            
-            # 首先检查是否有iframe
-            iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
-            if iframes:
-                logger.info(f"Found {len(iframes)} iframe(s), attempting to extract content from them")
-                iframe_texts = []
-                
-                for i, iframe in enumerate(iframes):
-                    try:
-                        # 切换到iframe
-                        self.driver.switch_to.frame(iframe)
-                        
-                        # 等待iframe内容加载
-                        time.sleep(1)
-                        
-                        # 获取iframe内的文本内容
-                        iframe_text = self.driver.find_element(By.TAG_NAME, "body").text
-                        if iframe_text.strip():
-                            iframe_texts.append(iframe_text)
-                            logger.info(f"Extracted {len(iframe_text)} characters from iframe {i+1}")
-                        
-                        # 切换回主页面
-                        self.driver.switch_to.default_content()
-                        
-                    except Exception as e:
-                        logger.debug(f"Failed to extract content from iframe {i+1}: {e}")
-                        # 确保切换回主页面
-                        try:
-                            self.driver.switch_to.default_content()
-                        except:
-                            pass
-                
-                # 如果从iframe中提取到了内容，优先使用
-                if iframe_texts:
-                    combined_text = "\n\n".join(iframe_texts)
-                    logger.info(f"Combined iframe content length: {len(combined_text)}")
-                    return self._clean_text_content(combined_text)
-            
-            # 方法1：直接获取页面文本内容
-            try:
-                page_text = self.driver.find_element(By.TAG_NAME, "body").text
-                if len(page_text.strip()) > 100:
-                    logger.info(f"Extracted text content directly, length: {len(page_text)}")
-                    return self._clean_text_content(page_text)
-            except Exception as e:
-                logger.debug(f"Direct text extraction failed: {e}")
-            
-            # 方法2：使用BeautifulSoup解析
-            page_source = self.driver.page_source
-            soup = BeautifulSoup(page_source, 'html.parser')
-            
-            # 只移除脚本和样式标签，保留更多内容
-            for tag in soup(["script", "style", "noscript"]):
-                tag.decompose()
-            
-            # 尝试提取主要内容的容器
-            main_content = None
-            content_selectors = [
-                'main', 'article', '.content', '.main-content', 
-                '.post-content', '.entry-content', '.page-content',
-                '#content', '#main', '.container', '.wrapper',
-                'div[class*="list"]', 'div[class*="article"]',  # 针对列表页面
-                '.list-container', '.article-list', '.news-list'
-            ]
-            
-            for selector in content_selectors:
-                try:
-                    if selector.startswith('.'):
-                        main_content = soup.select_one(selector)
-                    elif selector.startswith('#'):
-                        main_content = soup.find('div', id=selector[1:])
-                    elif selector.startswith('div['):
-                        main_content = soup.select_one(selector)
-                    else:
-                        main_content = soup.find(selector)
-                    
-                    if main_content and main_content.get_text(strip=True):
-                        logger.info(f"Found main content using selector: {selector}")
-                        break
-                except Exception:
-                    continue
-            
-            # 如果找到主要内容容器，使用它
-            if main_content and main_content.get_text(strip=True):
-                text_content = main_content.get_text()
-            else:
-                # 尝试找到包含最多文本的div
-                all_divs = soup.find_all('div')
-                if all_divs:
-                    # 找到文本内容最长的div
-                    longest_div = max(all_divs, key=lambda x: len(x.get_text(strip=True)))
-                    if len(longest_div.get_text(strip=True)) > 100:  # 至少100个字符
-                        logger.info("Using longest div with text content")
-                        text_content = longest_div.get_text()
-                    else:
-                        # 使用整个body
-                        body = soup.find('body')
-                        if body:
-                            text_content = body.get_text()
-                        else:
-                            text_content = soup.get_text()
-                else:
-                    # 使用整个body
-                    body = soup.find('body')
-                    if body:
-                        text_content = body.get_text()
-                    else:
-                        text_content = soup.get_text()
-            
-            # 清理文本内容
-            result = self._clean_text_content(text_content)
-            
-            # 记录提取的内容长度
-            logger.info(f"Extracted text content length: {len(result)} characters")
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error extracting text content: {e}")
-            return ""
     
-    def _clean_text_content(self, text: str) -> str:
-        """清理文本内容，移除多余的空行和空白字符"""
-        lines = text.split('\n')
-        cleaned_lines = []
-        prev_empty = False
-        
-        for line in lines:
-            line = line.strip()
-            if line:
-                cleaned_lines.append(line)
-                prev_empty = False
-            elif not prev_empty:
-                cleaned_lines.append('')
-                prev_empty = True
-        
-        return '\n'.join(cleaned_lines).strip()
-    
-    def extract_urls_and_text(self, request: UrlExtractRequest) -> UrlExtractResponse:
-        """提取URL和文本内容"""
+    def extract_urls(self, request: UrlExtractRequest) -> UrlExtractResponse:
+        """提取URL"""
         start_time = time.time()
+        
+        # 检查网络连接
+        if not self._check_network_connectivity():
+            logger.error("No network connectivity detected")
+            return UrlExtractResponse(
+                success=False,
+                source_url=str(request.url),
+                extracted_urls=[],
+                total_links_found=0,
+                processing_time=time.time() - start_time,
+                error_message="网络连接不可用，请检查网络设置",
+                method="selenium"
+            )
         
         try:
             # 设置WebDriver
@@ -328,9 +223,14 @@ class SeleniumExtractorService:
             logger.info("Extracting links...")
             extracted_urls = self._extract_links_from_page(url_str, base_domain, request)
             
+            # 获取完整的HTML内容（包括JavaScript渲染后的内容）
+            html_content = self.driver.page_source
+            
             # 提取文本内容
-            logger.info("Extracting text content...")
-            text_content = self._extract_text_content()
+            text_content = self.text_extractor.extract_text_content(html_content)
+            
+            # 提取结构化内容
+            structured_content = self.text_extractor.extract_structured_content(html_content)
             
             processing_time = time.time() - start_time
             
@@ -339,9 +239,11 @@ class SeleniumExtractorService:
                 source_url=str(request.url),
                 extracted_urls=extracted_urls,
                 total_links_found=len(extracted_urls),
-                markdown_content=text_content,
                 processing_time=processing_time,
-                method="selenium"
+                method="selenium",
+                html_content=html_content,
+                text_content=text_content,
+                structured_content=structured_content
             )
             
         except Exception as e:
@@ -353,7 +255,6 @@ class SeleniumExtractorService:
                 source_url=str(request.url),
                 extracted_urls=[],
                 total_links_found=0,
-                markdown_content="",
                 processing_time=processing_time,
                 method="selenium",
                 error_message=str(e)

@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     """
     应用配置类
     """
-    app_name: str = "URL to Markdown and Extract URL"
+    app_name: str = "URL Extract Service"
     debug: bool = False
     host: str = "0.0.0.0"
     port: int = 8000

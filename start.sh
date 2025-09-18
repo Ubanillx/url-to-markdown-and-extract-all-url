@@ -118,154 +118,11 @@ activate_environment() {
     fi
 }
 
-# 检查Chrome是否安装
-check_chrome() {
-    # 检查常见的Chrome可执行文件
-    if command -v google-chrome &> /dev/null || \
-       command -v chromium-browser &> /dev/null || \
-       command -v chromium &> /dev/null || \
-       command -v google-chrome-stable &> /dev/null; then
-        return 0
-    fi
-    
-    # macOS特殊检查
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        if [ -d "/Applications/Google Chrome.app" ] || [ -d "/Applications/Chromium.app" ]; then
-            return 0
-        fi
-    fi
-    
-    return 1
-}
 
-# 安装Chrome (Ubuntu/Debian)
-install_chrome_ubuntu() {
-    print_info "安装Google Chrome..."
-    
-    # 添加Google Chrome仓库
-    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-    
-    # 更新包列表并安装Chrome
-    sudo apt-get update
-    sudo apt-get install -y google-chrome-stable
-    
-    if [ $? -eq 0 ]; then
-        print_success "Chrome安装完成"
-    else
-        print_error "Chrome安装失败"
-        return 1
-    fi
-}
 
-# 安装Chrome (CentOS/RHEL)
-install_chrome_centos() {
-    print_info "安装Google Chrome..."
-    
-    # 添加Google Chrome仓库
-    sudo tee /etc/yum.repos.d/google-chrome.repo <<EOF
-[google-chrome]
-name=google-chrome
-baseurl=http://dl.google.com/linux/chrome/rpm/stable/x86_64
-enabled=1
-gpgcheck=1
-gpgkey=https://dl.google.com/linux/linux_signing_key.pub
-EOF
-    
-    # 安装Chrome
-    sudo yum install -y google-chrome-stable
-    
-    if [ $? -eq 0 ]; then
-        print_success "Chrome安装完成"
-    else
-        print_error "Chrome安装失败"
-        return 1
-    fi
-}
 
-# 安装Chrome (macOS)
-install_chrome_macos() {
-    print_info "在macOS上安装Google Chrome..."
-    
-    if command -v brew &> /dev/null; then
-        print_info "使用Homebrew安装Chrome..."
-        brew install --cask google-chrome
-        if [ $? -eq 0 ]; then
-            print_success "Chrome安装完成"
-        else
-            print_error "Chrome安装失败"
-            return 1
-        fi
-    else
-        print_warning "未检测到Homebrew，请手动安装Chrome"
-        print_info "请访问 https://www.google.com/chrome/ 下载并安装Chrome"
-        print_info "或安装Homebrew后运行: brew install --cask google-chrome"
-        return 1
-    fi
-}
 
-# 安装Chrome
-install_chrome() {
-    if check_chrome; then
-        print_success "Chrome已安装"
-        return 0
-    fi
-    
-    print_info "检测到Chrome未安装，开始安装..."
-    
-    # 检测操作系统
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        install_chrome_macos
-    elif [ -f /etc/debian_version ]; then
-        install_chrome_ubuntu
-    elif [ -f /etc/redhat-release ]; then
-        install_chrome_centos
-    else
-        print_warning "未识别的操作系统，请手动安装Chrome"
-        print_info "macOS: brew install --cask google-chrome"
-        print_info "Ubuntu/Debian: sudo apt-get install google-chrome-stable"
-        print_info "CentOS/RHEL: sudo yum install google-chrome-stable"
-        return 1
-    fi
-}
 
-# 安装依赖
-install_dependencies() {
-    print_info "检查并安装依赖..."
-    
-    # 安装Chrome
-    install_chrome
-    
-    # 检查是否有conda环境
-    if command -v conda &> /dev/null && conda info --envs | grep -q "url-to-markdown"; then
-        if [ -f "environment.yml" ]; then
-            print_info "从environment.yml安装依赖..."
-            conda env update -f environment.yml
-        elif [ -f "requirements.txt" ]; then
-            print_info "从requirements.txt安装依赖..."
-            pip install -r requirements.txt
-        else
-            print_warning "未找到依赖文件，尝试安装基本依赖..."
-            pip install fastapi uvicorn[standard] pydantic python-multipart requests beautifulsoup4 html2text lxml pydantic-settings selenium webdriver-manager
-        fi
-    else
-        # 没有conda环境，使用pip安装
-        if [ -f "requirements.txt" ]; then
-            print_info "从requirements.txt安装依赖..."
-            pip install -r requirements.txt
-        else
-            print_warning "未找到依赖文件，尝试安装基本依赖..."
-            pip install fastapi uvicorn[standard] pydantic python-multipart requests beautifulsoup4 html2text lxml pydantic-settings selenium webdriver-manager
-        fi
-    fi
-    
-    if [ $? -eq 0 ]; then
-        print_success "依赖安装完成"
-    else
-        print_error "依赖安装失败"
-        exit 1
-    fi
-}
 
 # 检查应用文件
 check_app_files() {
@@ -353,8 +210,8 @@ main() {
         fi
     fi
     
-    # 安装依赖
-    install_dependencies
+    # 跳过依赖安装 - 假设依赖已预先安装
+    print_info "跳过依赖安装，假设依赖已预先安装"
     
     # 检查应用文件
     check_app_files
@@ -382,7 +239,7 @@ show_help() {
     echo
     echo "macOS特定说明:"
     echo "  - 确保已安装Chrome浏览器"
-    echo "  - 建议使用Homebrew安装依赖: brew install python miniconda"
+    echo "  - 确保已安装所有必要的Python依赖"
     echo "  - 如果遇到权限问题，请检查Chrome的访问权限"
 }
 

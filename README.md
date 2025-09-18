@@ -1,6 +1,6 @@
-# URL to Markdown and Extract URL
+# URL Extract Service
 
-一个基于FastAPI的工程化项目，用于将URL转换为Markdown并提取URL。
+一个基于FastAPI的工程化项目，用于提取网页中的URL链接。
 
 ## 项目结构
 

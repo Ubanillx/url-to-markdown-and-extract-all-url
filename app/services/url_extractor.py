@@ -4,28 +4,22 @@ from typing import List, Set, Tuple
 from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
-import html2text
 from app.schemas.url_extract import UrlExtractRequest, UrlExtractResponse
+from app.services.text_extractor import TextExtractorService
 
 
 class UrlExtractorService:
-    """URL提取和Markdown转换服务"""
+    """URL提取服务"""
     
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
-        self.h2t = html2text.HTML2Text()
-        self.h2t.ignore_links = False
-        self.h2t.ignore_images = False
-        self.h2t.body_width = 0  # 不限制行宽
-        self.h2t.unicode_snob = True  # 使用Unicode字符
-        self.h2t.escape_snob = True  # 转义特殊字符
-        self.h2t.mark_code = True  # 标记代码块
+        self.text_extractor = TextExtractorService()
         
-    def extract_urls_and_markdown(self, request: UrlExtractRequest) -> UrlExtractResponse:
-        """提取URL并转换为Markdown"""
+    def extract_urls(self, request: UrlExtractRequest) -> UrlExtractResponse:
+        """提取URL"""
         start_time = time.time()
         
         try:
@@ -39,19 +33,24 @@ class UrlExtractorService:
             # 提取URLs
             extracted_urls = self._extract_urls(soup, request)
             
-            # 转换为Markdown
-            markdown_content = self._convert_to_markdown(soup, response.text)
+            # 提取文本内容
+            text_content = self.text_extractor.extract_text_content(response.text)
+            
+            # 提取结构化内容
+            structured_content = self.text_extractor.extract_structured_content(response.text)
             
             processing_time = time.time() - start_time
             
             return UrlExtractResponse(
                 source_url=str(request.url),
                 extracted_urls=extracted_urls,
-                markdown_content=markdown_content,
                 total_links_found=len(extracted_urls),
                 processing_time=processing_time,
                 success=True,
-                method="requests"
+                method="requests",
+                html_content=response.text,
+                text_content=text_content,
+                structured_content=structured_content
             )
             
         except Exception as e:
@@ -59,7 +58,6 @@ class UrlExtractorService:
             return UrlExtractResponse(
                 source_url=str(request.url),
                 extracted_urls=[],
-                markdown_content="",
                 total_links_found=0,
                 processing_time=processing_time,
                 success=False,
@@ -162,27 +160,3 @@ class UrlExtractorService:
             
         return True
     
-    def _convert_to_markdown(self, soup: BeautifulSoup, html_content: str) -> str:
-        """将HTML转换为Markdown"""
-        # 清理HTML
-        self._clean_html(soup)
-        
-        # 使用html2text转换
-        markdown = self.h2t.handle(str(soup))
-        
-        # 清理多余的空白行
-        markdown = re.sub(r'\n\s*\n\s*\n', '\n\n', markdown)
-        
-        return markdown.strip()
-    
-    def _clean_html(self, soup: BeautifulSoup):
-        """清理HTML内容"""
-        # 移除脚本和样式标签
-        for script in soup(["script", "style", "nav", "footer", "header"]):
-            script.decompose()
-            
-        # 移除注释
-        from bs4 import Comment
-        comments = soup.findAll(text=lambda text: isinstance(text, Comment))
-        for comment in comments:
-            comment.extract()

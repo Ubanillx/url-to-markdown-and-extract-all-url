@@ -11,5 +11,5 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "service": "URL to Markdown and Extract URL"
+        "service": "URL Extract Service"
     }

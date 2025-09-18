@@ -14,9 +14,11 @@ class UrlExtractResponse(BaseModel):
     """URL提取响应模型"""
     source_url: str
     extracted_urls: List[str]
-    markdown_content: str
     total_links_found: int
     processing_time: float
     success: bool
     error_message: Optional[str] = None
     method: Optional[str] = None  # 使用的提取方法 (requests/selenium)
+    html_content: Optional[str] = None  # 原始HTML内容
+    text_content: Optional[str] = None  # 提取的文本内容
+    structured_content: Optional[dict] = None  # 结构化内容信息
