@@ -7,8 +7,26 @@ from selenium.webdriver.chrome.options import Options
 
 # ================== 配置项 ==================
 CHROMEDRIVER_PATH = "/usr/local/bin/chromedriver"
-MIRROR_BASE_URL = "https://npmmirror.com/mirrors/chromedriver"  # 国内镜像
 CHROME_VERSION_CMD = ["google-chrome", "--version"]  # 获取版本命令
+
+# 多个下载源配置
+DOWNLOAD_SOURCES = [
+    {
+        "name": "npmmirror镜像",
+        "base_url": "https://npmmirror.com/mirrors/chromedriver",
+        "file_pattern": "{version}/chromedriver-linux64.zip"
+    },
+    {
+        "name": "官方源",
+        "base_url": "https://chromedriver.storage.googleapis.com",
+        "file_pattern": "{version}/chromedriver_linux64.zip"
+    },
+    {
+        "name": "GitHub镜像",
+        "base_url": "https://github.com/electron/electron/releases/download/v{version}",
+        "file_pattern": "chromedriver-{version}-linux-x64.zip"
+    }
+]
 
 
 def get_chrome_version():
@@ -26,29 +44,67 @@ def get_chrome_version():
         raise e
 
 
-def download_chromedriver(version):
-    """从国内镜像下载指定版本的 chromedriver"""
-    zip_file = "chromedriver-linux64.zip"
-    download_url = f"{MIRROR_BASE_URL}/{version}/{zip_file}"
-
-    print(f"🔍 尝试从镜像下载: {download_url}")
+def get_compatible_versions(chrome_version):
+    """获取兼容的 chromedriver 版本列表"""
+    # 解析主版本号
+    major_version = chrome_version.split('.')[0]
     
-    try:
-        response = requests.get(f"{MIRROR_BASE_URL}/{version}/", timeout=10)
-        if response.status_code != 200:
-            raise Exception("版本在镜像中不存在")
-    except:
-        print("❌ 镜像中未找到该版本，请尝试升级 Chrome 或手动下载")
-        raise FileNotFoundError(f"未找到版本 {version} 的驱动")
+    # 生成可能的版本列表（主版本号相同，尝试不同的补丁版本）
+    compatible_versions = [chrome_version]
+    
+    # 尝试相近的版本
+    version_parts = chrome_version.split('.')
+    if len(version_parts) >= 3:
+        major, minor, patch = version_parts[0], version_parts[1], version_parts[2]
+        
+        # 尝试不同的补丁版本
+        for offset in range(1, 6):  # 尝试前后5个版本
+            # 向前版本
+            new_patch = str(int(patch) + offset)
+            compatible_versions.append(f"{major}.{minor}.{new_patch}")
+            
+            # 向后版本
+            if int(patch) > offset:
+                new_patch = str(int(patch) - offset)
+                compatible_versions.append(f"{major}.{minor}.{new_patch}")
+    
+    return compatible_versions
 
-    # 下载 zip 包
-    with open(zip_file, "wb") as f:
-        print("⏬ 正在下载 chromedriver...")
-        r = requests.get(download_url, stream=True)
-        r.raise_for_status()
-        for chunk in r.iter_content(chunk_size=8192):
-            f.write(chunk)
-    print("✅ 下载完成")
+
+def download_chromedriver(version):
+    """从多个源下载指定版本的 chromedriver"""
+    compatible_versions = get_compatible_versions(version)
+    
+    for attempt_version in compatible_versions:
+        print(f"🔍 尝试版本: {attempt_version}")
+        
+        for source in DOWNLOAD_SOURCES:
+            try:
+                download_url = f"{source['base_url']}/{source['file_pattern'].format(version=attempt_version)}"
+                print(f"📡 尝试从 {source['name']} 下载: {download_url}")
+                
+                # 先检查URL是否存在
+                response = requests.head(download_url, timeout=10)
+                if response.status_code == 200:
+                    print(f"✅ 找到可用版本 {attempt_version} 在 {source['name']}")
+                    
+                    # 下载文件
+                    zip_file = "chromedriver-linux64.zip"
+                    with open(zip_file, "wb") as f:
+                        print("⏬ 正在下载 chromedriver...")
+                        r = requests.get(download_url, stream=True, timeout=30)
+                        r.raise_for_status()
+                        for chunk in r.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    print("✅ 下载完成")
+                    return attempt_version
+                    
+            except Exception as e:
+                print(f"❌ {source['name']} 下载失败: {str(e)}")
+                continue
+    
+    # 所有源都失败
+    raise FileNotFoundError(f"未找到兼容版本 {version} 的 chromedriver")
 
 
 def install_chromedriver():
@@ -69,11 +125,14 @@ def ensure_chromedriver():
 
     try:
         chrome_version = get_chrome_version()
-        download_chromedriver(chrome_version)
+        downloaded_version = download_chromedriver(chrome_version)
         install_chromedriver()
+        print(f"🎉 成功安装 chromedriver 版本: {downloaded_version}")
     except Exception as e:
         print("💥 自动安装失败:", str(e))
-        print("👉 请手动下载并安装: https://npmmirror.com/mirrors/chromedriver")
+        print("👉 请手动下载并安装:")
+        print("   - 官方源: https://chromedriver.chromium.org/downloads")
+        print("   - 镜像源: https://npmmirror.com/mirrors/chromedriver")
         raise
 
 
