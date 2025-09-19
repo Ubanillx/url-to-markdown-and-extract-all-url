@@ -22,9 +22,9 @@ DOWNLOAD_SOURCES = [
         "file_pattern": "{version}/chromedriver_linux64.zip"
     },
     {
-        "name": "GitHub镜像",
-        "base_url": "https://github.com/electron/electron/releases/download/v{version}",
-        "file_pattern": "chromedriver-{version}-linux-x64.zip"
+        "name": "Taobao镜像",
+        "base_url": "https://npm.taobao.org/mirrors/chromedriver",
+        "file_pattern": "{version}/chromedriver-linux64.zip"
     }
 ]
 
@@ -57,8 +57,8 @@ def get_compatible_versions(chrome_version):
     if len(version_parts) >= 3:
         major, minor, patch = version_parts[0], version_parts[1], version_parts[2]
         
-        # 尝试不同的补丁版本
-        for offset in range(1, 6):  # 尝试前后5个版本
+        # 尝试不同的补丁版本（扩大范围）
+        for offset in range(1, 11):  # 尝试前后10个版本
             # 向前版本
             new_patch = str(int(patch) + offset)
             compatible_versions.append(f"{major}.{minor}.{new_patch}")
@@ -67,6 +67,17 @@ def get_compatible_versions(chrome_version):
             if int(patch) > offset:
                 new_patch = str(int(patch) - offset)
                 compatible_versions.append(f"{major}.{minor}.{new_patch}")
+        
+        # 尝试不同的次版本号
+        for minor_offset in range(1, 3):  # 尝试前后2个次版本
+            # 向前次版本
+            new_minor = str(int(minor) + minor_offset)
+            compatible_versions.append(f"{major}.{new_minor}.{patch}")
+            
+            # 向后次版本
+            if int(minor) > minor_offset:
+                new_minor = str(int(minor) - minor_offset)
+                compatible_versions.append(f"{major}.{new_minor}.{patch}")
     
     return compatible_versions
 
@@ -117,22 +128,38 @@ def install_chromedriver():
     print(f"✅ chromedriver 已安装到 {CHROMEDRIVER_PATH}")
 
 
+def print_compatibility_info():
+    """打印Chrome和ChromeDriver版本兼容性信息"""
+    print("📋 Chrome 和 ChromeDriver 版本兼容性说明:")
+    print("   • Chrome 和 ChromeDriver 的主版本号必须完全匹配")
+    print("   • 次版本号可以有一定差异，但建议使用相近版本")
+    print("   • 补丁版本号可以不同，但差异不应过大")
+    print("   • 本脚本会自动尝试多个相近版本以确保兼容性")
+    print("   • 如果自动安装失败，请手动下载对应版本")
+    print()
+
 def ensure_chromedriver():
     """主函数：确保 chromedriver 存在"""
     if os.path.exists(CHROMEDRIVER_PATH):
         print(f"🟢 已检测到 chromedriver: {CHROMEDRIVER_PATH}")
         return
 
+    print_compatibility_info()
+    
     try:
         chrome_version = get_chrome_version()
         downloaded_version = download_chromedriver(chrome_version)
         install_chromedriver()
         print(f"🎉 成功安装 chromedriver 版本: {downloaded_version}")
+        print(f"✅ Chrome 版本: {chrome_version}")
+        print(f"✅ ChromeDriver 版本: {downloaded_version}")
+        print("🔗 版本兼容性检查通过！")
     except Exception as e:
         print("💥 自动安装失败:", str(e))
         print("👉 请手动下载并安装:")
         print("   - 官方源: https://chromedriver.chromium.org/downloads")
         print("   - 镜像源: https://npmmirror.com/mirrors/chromedriver")
+        print("   - 确保下载的版本与你的Chrome版本兼容")
         raise
 
 
