@@ -15,7 +15,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
-from webdriver_manager.chrome import ChromeDriverManager
+import os
 from bs4 import BeautifulSoup
 
 from app.schemas.url_extract import UrlExtractRequest, UrlExtractResponse
@@ -64,28 +64,53 @@ class SeleniumExtractorService:
         # 设置超时
         chrome_options.add_argument('--page-load-strategy=normal')
         
+        # 禁用Selenium Manager自动下载功能
+        chrome_options.set_capability("se:enableManager", False)
+        
+        # 定义可能的chromedriver路径
+        possible_driver_paths = [
+            "/usr/local/bin/chromedriver",  # 用户安装的路径
+            "/usr/bin/chromedriver",        # 系统路径
+            "chromedriver",                 # PATH中的chromedriver
+        ]
+        
+        driver_path = None
+        for path in possible_driver_paths:
+            if os.path.exists(path) or path == "chromedriver":
+                try:
+                    # 测试路径是否可用
+                    if path == "chromedriver":
+                        # 检查PATH中是否有chromedriver
+                        import shutil
+                        if shutil.which("chromedriver"):
+                            driver_path = "chromedriver"
+                            break
+                    else:
+                        # 检查文件是否可执行
+                        if os.access(path, os.X_OK):
+                            driver_path = path
+                            break
+                except Exception:
+                    continue
+        
+        if not driver_path:
+            raise Exception("未找到可用的chromedriver。请确保chromedriver已安装并在以下路径之一：/usr/local/bin/chromedriver, /usr/bin/chromedriver, 或系统PATH中")
+        
         try:
-            # 尝试自动下载和管理ChromeDriver
-            logger.info("Setting up Chrome driver...")
-            service = Service(ChromeDriverManager().install())
+            logger.info(f"Setting up Chrome driver using: {driver_path}")
+            
+            # 明确指定使用本地chromedriver，跳过Selenium Manager
+            service = Service(executable_path=driver_path)
             driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.set_page_load_timeout(30)
             driver.implicitly_wait(10)
+            
             logger.info("Chrome driver setup successful")
             return driver
+            
         except Exception as e:
             logger.error(f"Failed to setup Chrome driver: {e}")
-            # 尝试使用系统PATH中的chromedriver作为备用方案
-            try:
-                logger.info("Trying fallback: using system chromedriver...")
-                driver = webdriver.Chrome(options=chrome_options)
-                driver.set_page_load_timeout(30)
-                driver.implicitly_wait(10)
-                logger.info("Fallback Chrome driver setup successful")
-                return driver
-            except Exception as fallback_error:
-                logger.error(f"Fallback Chrome driver also failed: {fallback_error}")
-                raise Exception(f"无法设置Chrome WebDriver。请确保：1) 网络连接正常 2) 已安装Chrome浏览器 3) 系统PATH中有chromedriver。原始错误: {e}")
+            raise Exception(f"无法设置Chrome WebDriver。请确保：1) 已安装Chrome浏览器 2) chromedriver已正确安装并可执行。错误详情: {e}")
     
     def _wait_for_page_load(self, timeout: int = 15) -> bool:
         """等待页面完全加载，包括动态内容"""
