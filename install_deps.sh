@@ -152,147 +152,8 @@ update_environment() {
     fi
 }
 
-# 检查Chrome浏览器
-check_chrome() {
-    print_info "检查Chrome浏览器..."
-    
-    if command -v google-chrome &> /dev/null; then
-        chrome_version=$(google-chrome --version 2>&1)
-        print_success "✓ Chrome浏览器已安装: $chrome_version"
-        return 0
-    elif command -v chromium-browser &> /dev/null; then
-        chrome_version=$(chromium-browser --version 2>&1)
-        print_success "✓ Chromium浏览器已安装: $chrome_version"
-        return 0
-    elif command -v chromium &> /dev/null; then
-        chrome_version=$(chromium --version 2>&1)
-        print_success "✓ Chromium浏览器已安装: $chrome_version"
-        return 0
-    elif [[ "$OSTYPE" == "darwin"* ]] && [ -d "/Applications/Google Chrome.app" ]; then
-        print_success "✓ Chrome浏览器已安装 (macOS)"
-        return 0
-    else
-        print_warning "Chrome浏览器未安装"
-        return 1
-    fi
-}
 
-# 安装Chrome浏览器
-install_chrome() {
-    print_info "安装Chrome浏览器..."
-    
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        if command -v brew &> /dev/null; then
-            print_info "使用Homebrew安装Chrome..."
-            brew install --cask google-chrome
-            if [ $? -eq 0 ]; then
-                print_success "Chrome浏览器安装成功"
-            else
-                print_error "Chrome浏览器安装失败"
-                return 1
-            fi
-        else
-            print_warning "未检测到Homebrew，请手动安装Chrome浏览器"
-            print_info "下载地址: https://www.google.com/chrome/"
-            return 1
-        fi
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        # Linux
-        if command -v apt-get &> /dev/null; then
-            # Ubuntu/Debian
-            print_info "使用apt安装Chrome..."
-            wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-            echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-            sudo apt-get update
-            sudo apt-get install -y google-chrome-stable
-            if [ $? -eq 0 ]; then
-                print_success "Chrome浏览器安装成功"
-            else
-                print_error "Chrome浏览器安装失败"
-                return 1
-            fi
-        elif command -v yum &> /dev/null; then
-            # CentOS/RHEL
-            print_info "使用yum安装Chrome..."
-            sudo yum install -y google-chrome-stable
-            if [ $? -eq 0 ]; then
-                print_success "Chrome浏览器安装成功"
-            else
-                print_error "Chrome浏览器安装失败"
-                return 1
-            fi
-        elif command -v dnf &> /dev/null; then
-            # Fedora
-            print_info "使用dnf安装Chrome..."
-            sudo dnf install -y google-chrome-stable
-            if [ $? -eq 0 ]; then
-                print_success "Chrome浏览器安装成功"
-            else
-                print_error "Chrome浏览器安装失败"
-                return 1
-            fi
-        else
-            print_warning "未检测到支持的包管理器，请手动安装Chrome浏览器"
-            print_info "下载地址: https://www.google.com/chrome/"
-            return 1
-        fi
-    else
-        print_warning "不支持的操作系统，请手动安装Chrome浏览器"
-        print_info "下载地址: https://www.google.com/chrome/"
-        return 1
-    fi
-}
 
-# 测试Selenium和ChromeDriver
-test_selenium() {
-    print_info "测试Selenium和ChromeDriver..."
-    
-    # 创建测试脚本
-    local test_script=$(mktemp)
-    cat > "$test_script" << 'EOF'
-import sys
-try:
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.chrome.service import Service
-    from webdriver_manager.chrome import ChromeDriverManager
-    
-    # 设置Chrome选项
-    chrome_options = Options()
-    chrome_options.add_argument('--headless')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_argument('--disable-gpu')
-    
-    # 创建WebDriver
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    
-    # 测试访问网页
-    driver.get("https://www.google.com")
-    title = driver.title
-    driver.quit()
-    
-    print(f"SUCCESS: Selenium测试通过，页面标题: {title}")
-    sys.exit(0)
-    
-except Exception as e:
-    print(f"ERROR: Selenium测试失败: {e}")
-    sys.exit(1)
-EOF
-    
-    # 运行测试
-    if python "$test_script"; then
-        print_success "✓ Selenium和ChromeDriver测试通过"
-        rm -f "$test_script"
-        return 0
-    else
-        print_error "✗ Selenium和ChromeDriver测试失败"
-        rm -f "$test_script"
-        return 1
-    fi
-}
 
 # 验证安装
 verify_installation() {
@@ -310,8 +171,6 @@ verify_installation() {
         "requests"
         "beautifulsoup4"
         "lxml"
-        "selenium"
-        "webdriver-manager"
     )
     
     for package in "${packages[@]}"; do
@@ -323,20 +182,6 @@ verify_installation() {
         fi
     done
     
-    # 检查Chrome浏览器
-    if ! check_chrome; then
-        print_warning "Chrome浏览器未安装，正在尝试安装..."
-        if ! install_chrome; then
-            print_error "Chrome浏览器安装失败，Selenium可能无法正常工作"
-            print_info "请手动安装Chrome浏览器: https://www.google.com/chrome/"
-        fi
-    fi
-    
-    # 测试Selenium
-    if ! test_selenium; then
-        print_error "Selenium测试失败，请检查Chrome浏览器和ChromeDriver安装"
-        return 1
-    fi
     
     print_success "所有依赖验证通过"
 }
@@ -366,12 +211,6 @@ show_usage_instructions() {
     echo "  - 服务器: http://localhost:9998"
     echo "  - API文档: http://localhost:9998/docs"
     echo "  - 健康检查: http://localhost:9998/api/v1/health"
-    echo
-    print_info "Selenium功能:"
-    echo "  - 支持JavaScript渲染的网页内容提取"
-    echo "  - 自动管理ChromeDriver版本"
-    echo "  - 无头模式运行，适合服务器环境"
-    echo "  - 如果遇到Chrome相关问题，请检查Chrome浏览器安装"
     echo
 }
 
@@ -466,14 +305,6 @@ show_help() {
     echo "  - Requests (HTTP客户端)"
     echo "  - BeautifulSoup4 (HTML解析)"
     echo "  - LXML (XML/HTML解析器)"
-    echo "  - Selenium (Web自动化)"
-    echo "  - WebDriver Manager (浏览器驱动管理)"
-    echo
-    echo "浏览器支持:"
-    echo "  - 自动检测和安装Chrome浏览器"
-    echo "  - 支持macOS (通过Homebrew)"
-    echo "  - 支持Linux (Ubuntu/Debian/CentOS/Fedora)"
-    echo "  - 自动下载和管理ChromeDriver"
     echo
 }
 
